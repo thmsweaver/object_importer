@@ -1,10 +1,9 @@
 from django.db import connections
-from django.db.utils import ConnectionDoesNotExist
 
 
 class BaseMigration(object):
     # this should be a list of `table_name`
-    connection = 'foo'
+    connection = ''
     constraints = []
     fields = []
     fields_to_overwrite = []
@@ -12,6 +11,7 @@ class BaseMigration(object):
     # TODO: this should actually just be name of class
     # which should also correspond to name of Django model
     table_name = ''
+    cached_cursors = {}
 
     def _row_transformer(self, row_dict):
         return row_dict
@@ -61,7 +61,7 @@ class BaseMigration(object):
 
         # TODO: mark node as imported
 
-        cursor = setup_cursor()
+        cursor = self.setup_cursor()
         if cursor is None:
             return
 
@@ -74,7 +74,7 @@ class BaseMigration(object):
         print 'Fetched {count} {table}(s)...'.format(count=count, table=table)
         print '\n'
 
-        if not merge_impl:
+        if not self.merge_impl:
             def merge_impl(row_dict, model_class):
                 """Simply commit and return the object, nothing fancy..."""
                 obj = model_class(**row_dict)
@@ -120,28 +120,15 @@ class BaseMigration(object):
                     import pdb; pdb.set_trace()
 
     def setup_cursor(self):
-        """Connect cursor to `snapchat` database (see settings.py)."""
-        try:
-            return connections[self.connection].cursor()
-        except ConnectionDoesNotExist:
-            print 'Snapchat Advisor database is not correctly configured'
-            return None
+        """Connect cursor to appropriate database."""
+        if self.connection in self.cached_cursors:
+            return self.cached_cursors[self.connection]
+
+        cursor = connections[self.connection].cursor()
+        self.cached_cursors[self.connection] = cursor
+
+        return cursor
 
     def should_skip_import(self, row_dict):
         """Conditionally skip importing the object."""
         return False
-
-    # @property
-    # def model_class(self):
-    #     if hasattr(self, 'target_model_class', None):
-    #         return self.target_model_class
-
-    #     class_name = self.__class__.__name__
-    #     model_name = class_name.replace('Import', '', 1)
-    #     model_name = model_name[0]
-
-    #     target_model_class = apps.get_model(
-    #         app_label='this_project', model_name=model_name
-    #     )
-    #     self.target_model_class = target_model_class
-    #     return target_model_class

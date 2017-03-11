@@ -3,29 +3,45 @@ from node import Node
 
 class MigrationGraph(object):
     """Only retain what is applicable here..."""
+    built = False
 
-    def __init__(self):
+    def __init__(self, migrations):
         self.node_map = {}
         self.nodes = {}
-        self.initialized = False
+        self.migrations = migrations
 
     def add_node(self, key, implementation):
         node = Node(key, implementation)
         self.node_map[key] = node
         self.nodes[key] = implementation
 
-    def add_dependency(self, child, parent):
-        if not self.initialized:
+    def add_arcs(self, child, parent):
+        """Establish 'parent' and 'child' relationships."""
+        if not self.built:
             raise Exception('Must initialize graph before adding dependencies')
 
         if child not in self.node_map:
-            raise ValueError('Non existent node for child: %s.' % child)
+            raise ValueError('Non existent node for child: `%s`.' % child)
 
         if parent not in self.node_map:
-            raise ValueError('Non existent node for parent: %s.' % parent)
+            raise ValueError('Non existent node for parent: `%s`.' % parent)
 
         self.node_map[child].add_parent(self.node_map[parent])
         self.node_map[parent].add_child(self.node_map[child])
+
+    def configure_arcs(self):
+        """Configure parent and child arcs for applicable nodes."""
+        for key, migration in self.migrations.iteritems():
+            for constraint in migration.constraints:
+                self.add_arcs(key, constraint)
+
+    def build(self):
+        """Build graph and mark as such."""
+        for key, migration in self.migrations.iteritems():
+            self.add_node(key, migration)
+
+        self.built = True
+        self.configure_arcs()
 
     def _maybe_merge_parent_node(self, node):
         # TODO: protect against StopIteration?
@@ -86,7 +102,7 @@ class MigrationGraph(object):
             if not node.parents:
                 roots.add(node)
 
-        return roots
+        return roots  # TODO: use as generator function?
 
     def _nodes_and_edges(self):
         nodes = len(self.node_map.keys())
